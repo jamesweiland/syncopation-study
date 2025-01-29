@@ -1,3 +1,7 @@
+.vscode/
+make-sqlite/dbt/data/
+make-sqlite/logs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
