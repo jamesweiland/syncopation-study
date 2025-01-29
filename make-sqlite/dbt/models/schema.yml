@@ -1,0 +1,68 @@
+version: 1
+
+models:
+  - name: midi_files
+    description: |
+    A model describing MIDI files. MIDI files can be linked to
+    multiple spotify tracks from one or more artists. See
+    derived views (e.g., spotify_tracks_flat) for more useful
+    analytic tables.
+  columns:
+    - name: md5
+      tests:
+        - not_null
+        - unique
+    - name: wnbd
+      description: |
+        Number indicating the level of syncopation in the song.
+      tests:
+        - not_null
+    - name: instruments
+      description: Number of instruments (tracks) in the file.
+      tests:
+        - not_null
+      
+  - name: spotify_tracks
+    description: |
+      Contains information about a Spotify track that was linked to one of the MIDI files.
+    columns:
+      - name: spotify_id
+        description: Unique identifier from Spotify API.
+        tests:
+          - unique
+          - not_null
+      - name: artists
+        description: Names of the artists on the song, comma-separated if multiple artists.
+        tests:
+          - not null
+      - name: genres
+        description: Genres of the song, comma-separated if multiple.
+        tests:
+          - not null
+      - name: year_first_released
+        tests:
+          - not null
+      - name: duration
+        description: duration of the song in milliseconds.
+        tests:
+          - not null
+      - name: danceability
+        description: |
+          From Spotify API, Danceability describes how suitable a track is for dancing based on a combination of musical elements
+          including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.
+      - name: acousticness
+        description: |
+          From Spotify API, A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 
+          1.0 represents high confidence the track is acoustic.
+      - name: energy
+        description: |
+          Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. 
+          Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
+      - name: valence
+        description: |
+          A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive
+          (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+
+
+      
+    
