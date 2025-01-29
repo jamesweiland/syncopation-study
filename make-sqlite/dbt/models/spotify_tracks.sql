@@ -11,8 +11,8 @@ create table {{ this }} (
     genres varchar not null,
     year_first_released integer not null,
     duration integer not null,
-    danceability float,
-    acousticness float,
-    energy float,
-    valence float,
+    danceability real,
+    acousticness real,
+    energy real,
+    valence real,
 )
