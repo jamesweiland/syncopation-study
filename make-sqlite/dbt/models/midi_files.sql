@@ -6,7 +6,6 @@
 
 create table {{ this }} (
     md5 varchar primary key,
-    wnbd float not null,
-    instruments int not null,
-    
+    wnbd real not null,
+    instruments integer not null,
 )
