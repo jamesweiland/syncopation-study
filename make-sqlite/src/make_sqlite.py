@@ -19,8 +19,8 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
         cols=[
             "spotify_id", 
             "name", 
-            "album", 
-            "artists", 
+            "album_id", 
+            "artist_ids", 
             "year_first_released", 
             "duration_ms", 
             "popularity", 
@@ -33,8 +33,8 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
             (
                 track.id,
                 track.title,
-                track.album,
-                track.artists,
+                track.album.id,
+                ",".join([artist.id for artist in track.artists]),
                 track.year_first_released,
                 track.duration_ms,
                 track.popularity,
@@ -51,6 +51,36 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
         table_name="midi_spotify_map",
         cols=["md5", "spotify_id", "score"],
         vals=[(link.md5, link.sid, link.score) for link in track.links]
+    )
+
+    insert_many(
+        db=db,
+        table_name="artists",
+        cols=["artist_id", "title"],
+        vals=[(artist.artist_id, artist.title) for artist in track.artists],
+        integrity_handler="ignore" # since we only care about new artists
+    )
+
+    insert_many(
+        db=db,
+        table_name="albums",
+        cols=["album_id", "title"],
+        vals=[(track.album.album_id, track.album.title)], # only one album per track
+        integrity_handler="ignore"
+    )
+
+    insert_many(
+        db=db,
+        table_name="spotify_album_map",
+        cols=["spotify_id", "album_id"],
+        vals=[(track.id, track.album.album_id)],
+    )
+
+    insert_many(
+        db=db,
+        table_name="spotify_artist_map",
+        cols=["spotify_id", "artist_id"],
+        vals=[(track.id, artist.artist_id) for artist in track.artists]
     )
 
 def insert_midi_file(db: sqlite3.Connection, file: MIDI):
@@ -169,7 +199,7 @@ if __name__ == "__main__":
     # then, read the matches.tsv file into a df
     # then, get a list of unique md5s in the df
     args = parse_args()
-    
+
     if not args.no_dbt:
         dbt("clean")
         dbt("run")

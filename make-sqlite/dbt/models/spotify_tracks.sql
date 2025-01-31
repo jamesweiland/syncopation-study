@@ -7,8 +7,8 @@ config{{(
 create table {{ this }} (
     spotify_id varchar primary key,
     title varchar not null,
-    album varchar not null,
-    artists varchar not null,
+    album_id varchar not null,
+    artist_ids varchar not null,
     year_first_released integer not null,
     duration_ms integer not null,
     popularity integer,

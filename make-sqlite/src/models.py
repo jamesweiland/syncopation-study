@@ -150,13 +150,13 @@ class SpotifyAPI(BaseModel):
 
 @dataclass
 class Album:
-    id: str
-    name: str
+    album_id: str
+    title: str
 
 @dataclass
 class Artist:
-    id: str
-    name: str
+    artist_id: str
+    title: str
 
 class SpotifyTrack(BaseModel):
     id: str

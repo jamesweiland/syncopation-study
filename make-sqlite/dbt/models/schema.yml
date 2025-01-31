@@ -38,12 +38,12 @@ models:
         description: The name of the song.
         tests:
           - not_null
-      - name: album
-        description: The album that the song is in
+      - name: album_id
+        description: The Spotify id of the album that the song is in
         tests:
           - not_null
-      - name: artists
-        description: Names of the artists on the song.
+      - name: artist_ids
+        description: Spotify ids of the artists on the song. Comma separated if multiple.
         tests:
           - not null
       - name: year_first_released
@@ -73,6 +73,22 @@ models:
         description: |
           A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive
           (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+  - name: artists
+    columns:
+      - name: artist_id
+        tests:
+          - non_null
+      - name: title
+        tests:
+          - non_null
+  - name: album
+    columns:
+      - name: album_id
+        tests:
+          - non_null
+      - name: title
+        tests:
+          - non_null
   - name: midi_spotify_map
     description: |
       A junction table representing the many-to-many relationship between MIDI files and Spotify Tracks.
