@@ -1,16 +1,14 @@
-from pydantic import BaseModel
-from pandas import DataFrame
 import requests
 import os
+from pydantic import BaseModel
+from pandas import DataFrame
+from pathlib import Path
 from base64 import b64encode
 from dataclasses import dataclass
 
+from miditoolkit import MidiFile
 from synpy3 import WNBD
 from synpy3.syncopation import calculate_syncopation
-
-
-
-
 
 
 class Link:
@@ -30,24 +28,34 @@ class Link:
 
 class MIDI:
     md5: str
-    path_to_midi: str
+    instruments: int
     links: list[Link] # note that one md5 can be linked to multiple spotify tracks
-    WNBD_score: dict
+    summed_WNBD: float
+    mean_WNBD_per_bar: float
+    number_of_bars: int
+    number_of_bars_not_measured: int
+    bars_with_valid_output: int
+    bars_without_valid_output: int
 
-    def from_path(path: str, df: DataFrame) -> "MIDI":
+    def from_path(path: Path, df: DataFrame) -> "MIDI":
         """Create a MIDI object from a path to a .mid file."""
         assert path[-4] == ".mid"
         md5 = path[:-4]
-        links = df[df["md5"] == md5]
-        WNBD_score = calculate_syncopation(
+        links = Link.from_df(df[df["md5"] == md5])
+        wnbd = calculate_syncopation(
             model=WNBD,
             source=path
         )
         return MIDI(
             md5=md5,
-            path_to_midi=path,
+            instruments=MidiFile(path).num_instruments
             links=links,
-            WNBD_score=WNBD_score
+            summed_WNBD=wnbd["summed_WNBD"],
+            mean_WNBD_per_bar=wnbd["mean_WNBD_per_bar"],
+            number_of_bars=wnbd["number_of_bars"],
+            number_of_bars_not_measured=wnbd["number_of_bars_not_measured"],
+            bars_with_valid_output=wnbd["bars_with_valid_output"],
+            bars_without_valid_output=wnbd["bars_without_valid_output"]
         )
     
 class SpotifyAPI(BaseModel):
@@ -153,12 +161,12 @@ class Artist:
 class SpotifyTrack(BaseModel):
     id: str
     links: list[Link]
-    name: str
+    title: str
     album: Album
     artists: list[Artist]
     year_first_released: int
     duration_ms: int
-    popularity: float
+    popularity: int
     danceability: float
     acousticness: float
     energy: float
@@ -179,7 +187,7 @@ class SpotifyTrack(BaseModel):
         for id, track in id_to_track:
             # get data from call to tracks endpoint
             links = Link.from_df(df["sid" == id])
-            name = track["name"]
+            title = track["name"]
             year_first_released = int(track["album"]["release_date"][:3])
             duration_ms = track["duration_ms"]
             popularity = track["popularity"]
@@ -204,7 +212,7 @@ class SpotifyTrack(BaseModel):
                 SpotifyTrack(
                     id=id,
                     links=links,
-                    name=name,
+                    title=title,
                     album=album,
                     artists=artists,
                     year_first_released=year_first_released,

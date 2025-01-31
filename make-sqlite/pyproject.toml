@@ -16,6 +16,8 @@ pandas = "^2.2.3"
 miditoolkit = "^1.0.1"
 pytest = "^8.3.4"
 pydantic = "*"
+pathlib = "^1.0.1"
+tqdm = "^4.67.1"
 
 
 [build-system]

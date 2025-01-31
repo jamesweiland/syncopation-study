@@ -6,11 +6,12 @@ config{{(
 
 create table {{ this }} (
     spotify_id varchar primary key,
-    artists varchar not null,
+    title varchar not null,
     album varchar not null,
-    genres varchar not null,
+    artists varchar not null,
     year_first_released integer not null,
-    duration integer not null,
+    duration_ms integer not null,
+    popularity integer,
     danceability real,
     acousticness real,
     energy real,
