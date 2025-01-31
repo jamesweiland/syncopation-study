@@ -156,9 +156,9 @@ class SpotifyTrack(BaseModel):
     name: str
     album: Album
     artists: list[Artist]
-    genres: list[str] # we don't need any data other than the genre name right now
     year_first_released: int
     duration_ms: int
+    popularity: float
     danceability: float
     acousticness: float
     energy: float
@@ -168,60 +168,55 @@ class SpotifyTrack(BaseModel):
     def from_ids(ids: list[str], df: DataFrame) -> list["SpotifyTrack"]:
         """ Make an API call to the Spotify API for the given Spotify ID and make a SpotifyTrack object out of what the API returns.
             df is a DataFrame that represents the matches found in the TSV file."""
-        
-        # method 1
+
         api = SpotifyAPI()
         track_results = api.get_tracks(ids)
-        feature_results = api.get_features(ids)
+        features_results = api.get_features(ids)
         assert len(track_results) == len(feature_results)
-        for result in track_results:
-            links = Link.from_df(df["sid" == result["id"]])
-            name = result["name"]
-            id = result["id"]
-            year_first_release = int(result["album"]["release_date"][:3])
-            duration_ms = result["duration_ms"]
-            popularity = result["popularity"]
+        id_to_track = {track["id"]: track for track in track_results}
+        id_to_features = {features["id"]: features for features in features_results}
+        spotify_tracks = []
+        for id, track in id_to_track:
+            # get data from call to tracks endpoint
+            links = Link.from_df(df["sid" == id])
+            name = track["name"]
+            year_first_released = int(track["album"]["release_date"][:3])
+            duration_ms = track["duration_ms"]
+            popularity = track["popularity"]
             album = Album(
-                id=result["album"]["name"],
-                name=result["album"]["name"]
+                id=track["album"]["id"],
+                name=track["album"]["name"]
             )
             artists = [
                 Artist(
                     id=artist["id"],
                     name=artist["name"]
-                ) for artist in result["artists"]
+                ) for artist in track["artists"]
             ]
-            features = next((track for track in feature_results if track["id"] == id), None)
 
-        # method 2 - will probably go with this one
-        api = SpotifyAPI()
-        track_results = api.get_tracks(ids)
-        feature_results = api.get_features(ids)
-        assert len(track_results) == len(feature_results)
-        reorganized_result_dict = {track["id"]: track for track in track_results}
-        merged_results = []
-        for feature_result in feature_results:
-            merged_result = {**feature_result, **reorganized_result_dict["id"]}
-            merged_results.append(merged_result)
-        for result in track_results:
-            links = Link.from_df(df["sid" == result["id"]])
-            name = result["name"]
-            id = result["id"]
-            year_first_release = int(result["album"]["release_date"][:3])
-            duration_ms = result["duration_ms"]
-            popularity = result["popularity"]
-            album = Album(
-                id=result["album"]["id"],
-                name=result["album"]["name"]
+            # get data from call to features endpoint
+            features = id_to_features["id"]
+            danceability = features["danceability"]
+            acousticness = features["acousticness"]
+            energy = features["energy"]
+            valence = features["valence"]
+            spotify_tracks.append(
+                SpotifyTrack(
+                    id=id,
+                    links=links,
+                    name=name,
+                    album=album,
+                    artists=artists,
+                    year_first_released=year_first_released,
+                    duration_ms=duration_ms,
+                    popularity=popularity,
+                    danceability=danceability,
+                    acousticness=acousticness,
+                    energy=energy,
+                    valence=valence
+                )
             )
-            artists = [
-                Artist(
-                    id=artist["id"],
-                    name=artist["name"]
-                ) for artist in result["artists"]
-            ]
-            features = next((track for track in feature_results if track["id"] == id), None)
-
+        return spotify_tracks
 
 
 
