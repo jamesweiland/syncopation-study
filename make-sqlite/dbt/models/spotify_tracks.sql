@@ -1,4 +1,4 @@
-config{{(
+{{ config(
     materialized="create",
     post_hook="create index idx_sid on {{ this.name }} (spotify_id)"
   )

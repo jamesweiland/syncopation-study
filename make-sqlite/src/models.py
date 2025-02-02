@@ -1,17 +1,18 @@
 import requests
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from pandas import DataFrame
 from pathlib import Path
 from base64 import b64encode
 from dataclasses import dataclass
-
 from miditoolkit import MidiFile
+import re
+
 from synpy3 import WNBD
 from synpy3.syncopation import calculate_syncopation
 
 
-class Link:
+class Link(BaseModel):
     sid: str
     score: float # represents confidence of the link
     md5: str
@@ -25,8 +26,31 @@ class Link:
                 md5=df[idx]["md5"]
             ) for idx, row in df.iterrows()
         ]
+    
+    @validator("score", "md5", "sid", always=True)
+    def check_has_values(cls, v):
+        assert v.sid and v.score and v.md5
+        return v
 
-class MIDI:
+    @validator("score", always=True)
+    def check_score(cls, v):
+        assert v >= 0 and v <= 1
+        return v
+    
+    @validator("md5", always=True)
+    def check_md5(cls, v):
+        assert len(v) == 32
+        assert re.match(r'^[a-fA-F0-9]+$', v) # hexadecimal check
+        return v
+    
+    @validator("sid", always=True)
+    def check_sid(cls, v):
+        assert len(v) == 22
+        assert re.match(r'^[a-fA-F0-9]+$', v) # hexadecimal check
+        return v
+    
+
+class MIDI(BaseModel):
     md5: str
     instruments: int
     links: list[Link] # note that one md5 can be linked to multiple spotify tracks
@@ -48,7 +72,7 @@ class MIDI:
         )
         return MIDI(
             md5=md5,
-            instruments=MidiFile(path).num_instruments
+            instruments=MidiFile(path).num_instruments,
             links=links,
             summed_WNBD=wnbd["summed_WNBD"],
             mean_WNBD_per_bar=wnbd["mean_WNBD_per_bar"],

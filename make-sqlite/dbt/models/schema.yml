@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 models:
   - name: midi_files
@@ -81,7 +81,7 @@ models:
       - name: title
         tests:
           - non_null
-  - name: album
+  - name: albums
     columns:
       - name: album_id
         tests:
@@ -101,8 +101,8 @@ models:
       - name: spotify_id
         tests:
           - relationships:
-            to: ref("spotify_tracks")
-            field: spotify_id
+              to: ref("spotify_tracks")
+              field: spotify_id
       - name: score
         description: A 0 to 1 value representing the confidence of the link.
         tests:
