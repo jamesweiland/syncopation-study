@@ -1,19 +1,18 @@
-from pydantic import BaseModel
-from pandas import DataFrame
 import requests
 import os
+from pydantic import BaseModel, validator
+from pandas import DataFrame
+from pathlib import Path
 from base64 import b64encode
 from dataclasses import dataclass
+from miditoolkit import MidiFile
+import re
 
 from synpy3 import WNBD
 from synpy3.syncopation import calculate_syncopation
 
 
-
-
-
-
-class Link:
+class Link(BaseModel):
     sid: str
     score: float # represents confidence of the link
     md5: str
@@ -27,27 +26,60 @@ class Link:
                 md5=df[idx]["md5"]
             ) for idx, row in df.iterrows()
         ]
+    
+    @validator("score", "md5", "sid", always=True)
+    def check_has_values(cls, v):
+        assert v.sid and v.score and v.md5
+        return v
 
-class MIDI:
+    @validator("score", always=True)
+    def check_score(cls, v):
+        assert v >= 0 and v <= 1
+        return v
+    
+    @validator("md5", always=True)
+    def check_md5(cls, v):
+        assert len(v) == 32
+        assert re.match(r'^[a-fA-F0-9]+$', v) # hexadecimal check
+        return v
+    
+    @validator("sid", always=True)
+    def check_sid(cls, v):
+        assert len(v) == 22
+        assert re.match(r'^[a-fA-F0-9]+$', v) # hexadecimal check
+        return v
+    
+
+class MIDI(BaseModel):
     md5: str
-    path_to_midi: str
+    instruments: int
     links: list[Link] # note that one md5 can be linked to multiple spotify tracks
-    WNBD_score: dict
+    summed_WNBD: float
+    mean_WNBD_per_bar: float
+    number_of_bars: int
+    number_of_bars_not_measured: int
+    bars_with_valid_output: int
+    bars_without_valid_output: int
 
-    def from_path(path: str, df: DataFrame) -> "MIDI":
+    def from_path(path: Path, df: DataFrame) -> "MIDI":
         """Create a MIDI object from a path to a .mid file."""
         assert path[-4] == ".mid"
         md5 = path[:-4]
-        links = df[df["md5"] == md5]
-        WNBD_score = calculate_syncopation(
+        links = Link.from_df(df[df["md5"] == md5])
+        wnbd = calculate_syncopation(
             model=WNBD,
             source=path
         )
         return MIDI(
             md5=md5,
-            path_to_midi=path,
+            instruments=MidiFile(path).num_instruments,
             links=links,
-            WNBD_score=WNBD_score
+            summed_WNBD=wnbd["summed_WNBD"],
+            mean_WNBD_per_bar=wnbd["mean_WNBD_per_bar"],
+            number_of_bars=wnbd["number_of_bars"],
+            number_of_bars_not_measured=wnbd["number_of_bars_not_measured"],
+            bars_with_valid_output=wnbd["bars_with_valid_output"],
+            bars_without_valid_output=wnbd["bars_without_valid_output"]
         )
     
 class SpotifyAPI(BaseModel):
@@ -142,23 +174,23 @@ class SpotifyAPI(BaseModel):
 
 @dataclass
 class Album:
-    id: str
-    name: str
+    album_id: str
+    title: str
 
 @dataclass
 class Artist:
-    id: str
-    name: str
+    artist_id: str
+    title: str
 
 class SpotifyTrack(BaseModel):
     id: str
     links: list[Link]
-    name: str
+    title: str
     album: Album
     artists: list[Artist]
-    genres: list[str] # we don't need any data other than the genre name right now
     year_first_released: int
     duration_ms: int
+    popularity: int
     danceability: float
     acousticness: float
     energy: float
@@ -168,60 +200,55 @@ class SpotifyTrack(BaseModel):
     def from_ids(ids: list[str], df: DataFrame) -> list["SpotifyTrack"]:
         """ Make an API call to the Spotify API for the given Spotify ID and make a SpotifyTrack object out of what the API returns.
             df is a DataFrame that represents the matches found in the TSV file."""
-        
-        # method 1
+
         api = SpotifyAPI()
         track_results = api.get_tracks(ids)
-        feature_results = api.get_features(ids)
+        features_results = api.get_features(ids)
         assert len(track_results) == len(feature_results)
-        for result in track_results:
-            links = Link.from_df(df["sid" == result["id"]])
-            name = result["name"]
-            id = result["id"]
-            year_first_release = int(result["album"]["release_date"][:3])
-            duration_ms = result["duration_ms"]
-            popularity = result["popularity"]
+        id_to_track = {track["id"]: track for track in track_results}
+        id_to_features = {features["id"]: features for features in features_results}
+        spotify_tracks = []
+        for id, track in id_to_track:
+            # get data from call to tracks endpoint
+            links = Link.from_df(df["sid" == id])
+            title = track["name"]
+            year_first_released = int(track["album"]["release_date"][:3])
+            duration_ms = track["duration_ms"]
+            popularity = track["popularity"]
             album = Album(
-                id=result["album"]["name"],
-                name=result["album"]["name"]
+                id=track["album"]["id"],
+                name=track["album"]["name"]
             )
             artists = [
                 Artist(
                     id=artist["id"],
                     name=artist["name"]
-                ) for artist in result["artists"]
+                ) for artist in track["artists"]
             ]
-            features = next((track for track in feature_results if track["id"] == id), None)
 
-        # method 2 - will probably go with this one
-        api = SpotifyAPI()
-        track_results = api.get_tracks(ids)
-        feature_results = api.get_features(ids)
-        assert len(track_results) == len(feature_results)
-        reorganized_result_dict = {track["id"]: track for track in track_results}
-        merged_results = []
-        for feature_result in feature_results:
-            merged_result = {**feature_result, **reorganized_result_dict["id"]}
-            merged_results.append(merged_result)
-        for result in track_results:
-            links = Link.from_df(df["sid" == result["id"]])
-            name = result["name"]
-            id = result["id"]
-            year_first_release = int(result["album"]["release_date"][:3])
-            duration_ms = result["duration_ms"]
-            popularity = result["popularity"]
-            album = Album(
-                id=result["album"]["id"],
-                name=result["album"]["name"]
+            # get data from call to features endpoint
+            features = id_to_features["id"]
+            danceability = features["danceability"]
+            acousticness = features["acousticness"]
+            energy = features["energy"]
+            valence = features["valence"]
+            spotify_tracks.append(
+                SpotifyTrack(
+                    id=id,
+                    links=links,
+                    title=title,
+                    album=album,
+                    artists=artists,
+                    year_first_released=year_first_released,
+                    duration_ms=duration_ms,
+                    popularity=popularity,
+                    danceability=danceability,
+                    acousticness=acousticness,
+                    energy=energy,
+                    valence=valence
+                )
             )
-            artists = [
-                Artist(
-                    id=artist["id"],
-                    name=artist["name"]
-                ) for artist in result["artists"]
-            ]
-            features = next((track for track in feature_results if track["id"] == id), None)
-
+        return spotify_tracks
 
 
 

@@ -3,8 +3,8 @@ Author: Chunyang Song
 Institution: Centre for Digital Music, Queen Mary University of London
 
 '''
-from rhythm_parser import *
-from music_objects import *
+from .rhythm_parser import *
+from .music_objects import *
 from miditoolkit import MidiFile
 
 

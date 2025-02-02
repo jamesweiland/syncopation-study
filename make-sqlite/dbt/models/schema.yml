@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 models:
   - name: midi_files
@@ -12,15 +12,19 @@ models:
         tests:
           - not_null
           - unique
-      - name: wnbd
-        description: |
-          Number indicating the level of syncopation in the song.
-        tests:
-          - not_null
       - name: instruments
-        description: Number of instruments (tracks) in the file.
+        description: |
+          Number of instruments in the MIDI file.
         tests:
           - not_null
+      - name: summed_WNBD
+        description: summed WNBD score across all bars.
+      - name: mean_WNBD_per_bar
+        description: mean WNBD score.
+      - name: number_of_bars
+      - name: number_of_bars_not_measured
+      - name: bars_with_valid_output
+      - name: bars_without_valid_output
   - name: spotify_tracks
     description: |
       Contains information about a Spotify track that was linked to one of the MIDI files.
@@ -30,21 +34,29 @@ models:
         tests:
           - unique
           - not_null
-      - name: artists
-        description: Names of the artists on the song, comma-separated if multiple artists.
+      - name: title
+        description: The name of the song.
         tests:
-          - not null
-      - name: genres
-        description: Genres of the song, comma-separated if multiple.
+          - not_null
+      - name: album_id
+        description: The Spotify id of the album that the song is in
+        tests:
+          - not_null
+      - name: artist_ids
+        description: Spotify ids of the artists on the song. Comma separated if multiple.
         tests:
           - not null
       - name: year_first_released
         tests:
           - not null
-      - name: duration
+      - name: duration_ms
         description: duration of the song in milliseconds.
         tests:
           - not null
+      - name: popularity
+        description: |
+          From Spotify API, The popularity of the track.
+          The value will be between 0 and 100, with 100 being the most popular.
       - name: danceability
         description: |
           From Spotify API, Danceability describes how suitable a track is for dancing based on a combination of musical elements
@@ -61,6 +73,22 @@ models:
         description: |
           A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive
           (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+  - name: artists
+    columns:
+      - name: artist_id
+        tests:
+          - non_null
+      - name: title
+        tests:
+          - non_null
+  - name: albums
+    columns:
+      - name: album_id
+        tests:
+          - non_null
+      - name: title
+        tests:
+          - non_null
   - name: midi_spotify_map
     description: |
       A junction table representing the many-to-many relationship between MIDI files and Spotify Tracks.
@@ -73,8 +101,8 @@ models:
       - name: spotify_id
         tests:
           - relationships:
-            to: ref("spotify_tracks")
-            field: spotify_id
+              to: ref("spotify_tracks")
+              field: spotify_id
       - name: score
         description: A 0 to 1 value representing the confidence of the link.
         tests:
