@@ -149,9 +149,8 @@ def chunker(seq: Iterable, size: int) -> Generator:
 
 def dbt(*args):
     """Wrapper function for executing dbt command line arguments"""
-    print(f'attempting dbt {args[0]}')
     return subprocess.call(
-        ["dbt", *args, f"--profiles-dir {DBT_PATH}", f"--project-dir {DBT_PATH}"]
+        ["dbt", *args, f"--project-dir={DBT_PATH}", f"--profiles-dir={DBT_PATH}"]
     )
 
 def parse_args() -> argparse.Namespace:
@@ -207,6 +206,8 @@ if __name__ == "__main__":
     assert args.matches.exists(), "Must provide a valid path to the matches file."
     db = sqlite3.connect(args.out, timeout=10000)
     df = pd.read_csv(args.matches, sep="\t")
+
+    print(df.columns)
 
     unique_sids = df["sid"].unique()
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))

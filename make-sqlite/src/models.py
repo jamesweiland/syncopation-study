@@ -1,6 +1,7 @@
+from typing import Optional, Union
 import requests
 import os
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, PrivateAttr, validator
 from pandas import DataFrame
 from pathlib import Path
 from base64 import b64encode
@@ -83,16 +84,16 @@ class MIDI(BaseModel):
         )
     
 class SpotifyAPI(BaseModel):
-    client_id: str = os.environ["SPOTIFY_CLIENT_ID"]
-    client_secret: str = os.environ["SPOTIFY_CLIENT_SECRET"]
-    api_token: str = ""
+    _client_id: str = PrivateAttr(default=os.environ["SPOTIFY_CLIENT_ID"])
+    _client_secret: str = PrivateAttr(default=os.environ["SPOTIFY_CLIENT_SECRET"])
+    _api_token: str = PrivateAttr(default="")
 
     def get_tracks(self, ids: list[str]) -> list[dict]:
         """ Make a GET request to the Spotify API for a list of tracks and return
             the JSON-formatted response."""
         assert len(ids) <= 50, "Must request less than 50 tracks at a time."
 
-        if self.api_token == "":
+        if self._api_token == "":
             self._send_auth_request()
 
         ids_comma_separated = ""
@@ -102,7 +103,7 @@ class SpotifyAPI(BaseModel):
         
         endpoint = "https://api.spotify.com/v1/tracks?ids=" + ids_comma_separated
         header = {
-            "Authorization": "Bearer " + self.api_token
+            "Authorization": "Bearer " + self._api_token
         }
         try:
             response = requests.get(url=endpoint, headers=header)
@@ -115,58 +116,66 @@ class SpotifyAPI(BaseModel):
             print(f"An error occurred when making the request: {e}")
             raise e
     
-    def get_features(self, ids: list[str]) -> list[dict]:
-        """ Make a GET request to the Spotify API for a list of tracks' audio
-            features and return the JSON-formatted response. """
-        assert len(ids) <= 50, "Must request less than 50 tracks at a time."
+    """ Spotify deprecated their audio-features endpoint :(
+        I will keep this function here on the off-chance that
+        one day we are able to access audio features from
+        Spotify again. In the meantime, there is a Kaggle dataset
+        with 1.2 million songs that contains the audio features
+        before the endpoint was deprecated.
+    """
+    # def get_features(self, ids: list[str]) -> list[dict]:
+    #     """ Make a GET request to the Spotify API for a list of tracks' audio
+    #         features and return the JSON-formatted response. """
+    #     assert len(ids) <= 50, "Must request less than 50 tracks at a time."
 
-        if self.api_token == "":
-            self._send_auth_request()
+    #     if self._api_token == "":
+    #         self._send_auth_request()
 
-        ids_comma_separated = ""
-        for id in ids:
-            ids_comma_separated += id + ","
-        ids_comma_separated = ids_comma_separated[:-1]
+    #     ids_comma_separated = ""
+    #     for id in ids:
+    #         ids_comma_separated += id + ","
+    #     ids_comma_separated = ids_comma_separated[:-1]
 
-        endpoint = "https://api.spotify.com/v1/audio-features?ids=" + ids_comma_separated
-        header = {
-            "Authorization": "Bearer" + self.api_token
-        }
-        try:
-            response = requests.get(url=endpoint, headers=header)
-            if response.status_code == 200:
-                return response.json()["tracks"]
-            else:
-                print(f"Bad HTTP Code: {response.status_code}")
-                raise requests.exceptions.HTTPError
-        except Exception as e:
-            print(f"An error occurred when making the request: {e}")
-            raise e
+    #     endpoint = "https://api.spotify.com/v1/audio-features?ids=" + ids_comma_separated
+    #     print(endpoint)
+    #     header = {
+    #         "Authorization": "Bearer " + self._api_token
+    #     }
+    #     try:
+    #         response = requests.get(url=endpoint, headers=header)
+    #         if response.status_code == 200:
+    #             return response.json()["tracks"]
+    #         else:
+    #             print(f"Bad HTTP Code: {response.status_code}")
+    #             raise requests.exceptions.HTTPError
+    #     except Exception as e:
+    #         print(f"An error occurred when making the request: {e}")
+    #         raise e
         
     def _send_auth_request(self):
         """ Sends an authorization request for an access token to the Spotify API and
-            stores the access token in SPOTIFY_API_TOKEN if successful."""
-        auth_string = f"{self.client_id}:{self.client_secret}"
-        auth_encoded = b64encode(auth_string.encode("utf-8"))
+            stores the access token in api_token if successful."""
+        auth_string = f"{self._client_id}:{self._client_secret}"
+        auth_encoded = b64encode(auth_string.encode("ascii")).decode("ascii")
+        print(f'\nauth encoded: {str(auth_encoded)}\n')
 
-        endpoint = "https://accounts/spotify/api/token"
+        endpoint = "https://accounts.spotify.com/api/token"
         headers = {
-            "Authorization": "Basic" + auth_encoded,
+            "Authorization": "Basic " + str(auth_encoded),
             "Content-Type": "application/x-www-form-urlencoded"
         }
         body = {"grant_type": "client_credentials"}
         try:
             response = requests.post(url=endpoint, headers=headers, data=body)
             if response.status_code == 200:
-                response = response.json()
-                global SPOTIFY_API_TOKEN
-                SPOTIFY_API_TOKEN = response["access_token"]
-                return response["access_token"]
+                result = response.json()
+                self._api_token = result["access_token"]
+                return result["access_token"]
             else:
-                print(f"Bad HTTP Code: {response.status_code}")
+                print(f"\nBad HTTP Code: {response.status_code}")
                 raise requests.exceptions.HTTPError
         except Exception as e:
-            print(f"An error occured making the request: {e}")
+            print(f"\nAn error occured making the request: {e}\n")
             raise e
 
 # For now, we don't need anything from these objects except the name
@@ -182,6 +191,28 @@ class Artist:
     artist_id: str
     title: str
 
+class Features(BaseModel):
+    id: str
+    danceability: float
+    acousticness: float
+    energy: float
+    valence: float
+
+    @classmethod
+    def from_df(cls, id: str, audio_features: DataFrame) -> "Features":
+        """ Creates a Features object from the Kaggle CSV of audio features as a dataframe"""
+        if id in audio_features["id"]:
+            row = audio_features[audio_features["id"] == id]
+            return Features(
+                id=id,
+                danceability=row["danceability"],
+                acousticness=row["acousticness"],
+                energy=row["energy"],
+                valence=row["valence"]
+            )
+        else:
+            return None
+
 class SpotifyTrack(BaseModel):
     id: str
     links: list[Link]
@@ -191,26 +222,29 @@ class SpotifyTrack(BaseModel):
     year_first_released: int
     duration_ms: int
     popularity: int
-    danceability: float
-    acousticness: float
-    energy: float
-    valence: float
+    has_features: bool
+    features: Optional[Features]
 
     @classmethod
-    def from_ids(ids: list[str], df: DataFrame) -> list["SpotifyTrack"]:
+    def from_ids(cls, ids: list[str], matches: DataFrame, audio_features: DataFrame) -> list["SpotifyTrack"]:
         """ Make an API call to the Spotify API for the given Spotify ID and make a SpotifyTrack object out of what the API returns.
             df is a DataFrame that represents the matches found in the TSV file."""
 
         api = SpotifyAPI()
         track_results = api.get_tracks(ids)
-        features_results = api.get_features(ids)
-        assert len(track_results) == len(feature_results)
+
+        features_results = [Features.from_df(id=id, audio_features=audio_features) for id in ids]
+
+        # keep this in case Spotify un-deprecates the audio-features endpoint
+        # features_results = api.get_features(ids)
+        # assert len(track_results) == len(feature_results)
+
         id_to_track = {track["id"]: track for track in track_results}
-        id_to_features = {features["id"]: features for features in features_results}
+        id_to_features = {features.id: features for features in features_results}
         spotify_tracks = []
         for id, track in id_to_track:
             # get data from call to tracks endpoint
-            links = Link.from_df(df["sid" == id])
+            links = Link.from_df(matches["sid" == id])
             title = track["name"]
             year_first_released = int(track["album"]["release_date"][:3])
             duration_ms = track["duration_ms"]
@@ -226,12 +260,14 @@ class SpotifyTrack(BaseModel):
                 ) for artist in track["artists"]
             ]
 
-            # get data from call to features endpoint
-            features = id_to_features["id"]
-            danceability = features["danceability"]
-            acousticness = features["acousticness"]
-            energy = features["energy"]
-            valence = features["valence"]
+            # feature data
+            if id_to_features["id"] is not None:
+                has_features = True
+                features = id_to_features["id"]
+            else:
+                has_features = False
+                features = None
+            
             spotify_tracks.append(
                 SpotifyTrack(
                     id=id,
@@ -242,13 +278,13 @@ class SpotifyTrack(BaseModel):
                     year_first_released=year_first_released,
                     duration_ms=duration_ms,
                     popularity=popularity,
-                    danceability=danceability,
-                    acousticness=acousticness,
-                    energy=energy,
-                    valence=valence
+                    has_features=has_features,
+                    features=features
                 )
             )
         return spotify_tracks
+    
+
 
 
 
