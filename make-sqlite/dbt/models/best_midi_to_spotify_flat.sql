@@ -4,7 +4,6 @@
    with their highest-confidence Spotify track. 
 */
 
-create view {{ this }} as
 with ranked_relationships as (
     select
         midi_spotify_map.md5,
@@ -33,5 +32,5 @@ select
     -- score
     ranked_relationships.score as relationship_score
 from {{ ref("midi_files") }} midi_files
-join ranked_relationships on midi_files.md5 = ranked_relationships.md5 and ranked_relationship.rank = 1
-join {{ ref("spotify_tracks") }} on ranked_relationships.spotify_id = spotify_tracks.spotify_id
+join ranked_relationships on midi_files.md5 = ranked_relationships.md5 and ranked_relationships.rank = 1
+join {{ ref("spotify_tracks") }} spotify_tracks on ranked_relationships.spotify_id = spotify_tracks.spotify_id

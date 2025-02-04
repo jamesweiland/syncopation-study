@@ -4,7 +4,6 @@
    with their highest-confidence MIDI file. 
 */
 
-create view {{ this }} as
 with ranked_relationships as (
     select
         midi_spotify_map.md5,

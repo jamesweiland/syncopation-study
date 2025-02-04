@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 
-from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR, SQLITE_SAVE_PATH
+from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR_PATH, SQLITE_SAVE_PATH
 from .models import SpotifyTrack, MIDI
 
 def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
@@ -151,7 +151,7 @@ def dbt(*args):
     """Wrapper function for executing dbt command line arguments"""
     print(f'attempting dbt {args[0]}')
     return subprocess.call(
-        ["dbt", *args, f"--profiles-dir={DBT_PATH}", f"--project-dir={DBT_PATH}"]
+        ["dbt", *args, f"--profiles-dir {DBT_PATH}", f"--project-dir {DBT_PATH}"]
     )
 
 def parse_args() -> argparse.Namespace:
@@ -174,7 +174,7 @@ def parse_args() -> argparse.Namespace:
         "--midis",
         type=Path,
         help="The path to the directory containing the MIDI files.",
-        default=MMD_MIDI_DIR
+        default=MMD_MIDI_DIR_PATH
     )
 
     parser.add_argument(

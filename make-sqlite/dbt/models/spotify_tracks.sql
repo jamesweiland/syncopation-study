@@ -15,5 +15,5 @@ create table {{ this }} (
     danceability real,
     acousticness real,
     energy real,
-    valence real,
+    valence real
 )
