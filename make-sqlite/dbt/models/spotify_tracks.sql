@@ -12,8 +12,5 @@ create table {{ this }} (
     year_first_released integer not null,
     duration_ms integer not null,
     popularity integer,
-    danceability real,
-    acousticness real,
-    energy real,
-    valence real
+    has_features boolean not null,
 )

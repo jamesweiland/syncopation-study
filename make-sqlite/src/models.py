@@ -197,6 +197,8 @@ class Features(BaseModel):
     acousticness: float
     energy: float
     valence: float
+    speechiness: float
+    instrumentalness: float
 
     @classmethod
     def from_df(cls, id: str, audio_features: DataFrame) -> "Features":
@@ -208,7 +210,9 @@ class Features(BaseModel):
                 danceability=row["danceability"],
                 acousticness=row["acousticness"],
                 energy=row["energy"],
-                valence=row["valence"]
+                valence=row["valence"],
+                speechiness=row["speechiness"],
+                instrumentalness=row["instrumentalness"]
             )
         else:
             return None

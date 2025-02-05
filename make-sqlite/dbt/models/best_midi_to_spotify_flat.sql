@@ -24,11 +24,9 @@ select
     spotify_tracks.album,
     spotify_tracks.genres,
     spotify_tracks.year_first_released,
-    spotify_tracks.duration,
-    spotify_tracks.danceability,
-    spotify_tracks.acousticness,
-    spotify_tracks.energy,
-    spotify_tracks.valence,
+    spotify_tracks.duration_ms,
+    spotify_tracks.popularity,
+    spotify_tracks.has_features,
     -- score
     ranked_relationships.score as relationship_score
 from {{ ref("midi_files") }} midi_files
