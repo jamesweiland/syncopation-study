@@ -69,33 +69,33 @@ models:
         tests:
           - unique
           - not_null
-          relationships:
-            to: ref("spotify_tracks")
-            field: spotify_id
+          - relationships:
+              to: ref("spotify_tracks")
+              field: spotify_id
       - name: danceability
         description: |
           From Spotify API, Danceability describes how suitable a track is for dancing based on a combination of musical elements
           including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.
         tests:
-          - non_null
+          - not_null
       - name: acousticness
         description: |
           From Spotify API, A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 
           1.0 represents high confidence the track is acoustic.
         tests:
-          - non_null
+          - not_null
       - name: energy
         description: |
           Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. 
           Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
         tests:
-          - non_null
+          - not_null
       - name: valence
         description: |
           A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive
           (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
         tests:
-          - non_null
+          - not_null
       - name: speechiness
         description: |
           Speechiness detects the presence of spoken words in a track.
@@ -103,7 +103,7 @@ models:
           Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, 
           including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks.
         tests:
-          - non_null
+          - not_null
       - name: instrumentalness
         description: |
           Predicts whether a track contains no vocals. 
@@ -112,23 +112,23 @@ models:
           the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is 
           higher as the value approaches 1.0.
         tests:
-          - non_null
+          - not_null
   - name: artists
     columns:
       - name: artist_id
         tests:
-          - non_null
+          - not_null
       - name: title
         tests:
-          - non_null
+          - not_null
   - name: albums
     columns:
       - name: album_id
         tests:
-          - non_null
+          - not_null
       - name: title
         tests:
-          - non_null
+          - not_null
   - name: midi_spotify_map
     description: |
       A junction table representing the many-to-many relationship between MIDI files and Spotify Tracks.
@@ -174,3 +174,22 @@ models:
       A view of best_midi_to_spotify_flat with only spotify tracks that have features,
       with those features included.
     columns:
+      - name: spotify_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref("spotify_tracks")
+              field: spotify_id
+  - name: best_spotify_to_midi_flat_with_features
+    description: |
+      A view of best_spotify_to_midi_flat with only spotify tracks that have features,
+      with those features included.
+    columns:
+      - name: spotify_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref("spotify_tracks")
+              field: spotify_id

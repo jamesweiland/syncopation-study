@@ -1,6 +1,6 @@
 {{ config(
     materialized="create",
-    post_hook="create index idx_md5 on {{ this.name }} (md5)"
+    post_hook="create index idx_midi on {{ this.name }} (md5)"
   )
 }}
 

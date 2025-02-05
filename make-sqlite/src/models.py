@@ -22,15 +22,15 @@ class Link(BaseModel):
         """Create a list of Links from a dataframe"""
         return [
             Link(
-                sid=df[idx]["sid"],
-                score=df[idx]["score"],
-                md5=df[idx]["md5"]
+                sid=row["sid"],
+                score=row["score"],
+                md5=row["md5"]
             ) for idx, row in df.iterrows()
         ]
     
     @validator("score", "md5", "sid", always=True)
     def check_has_values(cls, v):
-        assert v.sid and v.score and v.md5
+        assert v
         return v
 
     @validator("score", always=True)
@@ -47,7 +47,7 @@ class Link(BaseModel):
     @validator("sid", always=True)
     def check_sid(cls, v):
         assert len(v) == 22
-        assert re.match(r'^[a-fA-F0-9]+$', v) # hexadecimal check
+        assert re.match(r'^[0-9A-Za-z]+$', v) # base62 check
         return v
     
 
@@ -113,7 +113,7 @@ class SpotifyAPI(BaseModel):
                 print(f"Bad HTTP Code: {response.status_code}")
                 raise requests.exceptions.HTTPError
         except Exception as e:
-            print(f"An error occurred when making the request: {e}")
+            print(f"An error occurred when making the request to get tracks: {e}")
             raise e
     
     """ Spotify deprecated their audio-features endpoint :(
@@ -157,7 +157,6 @@ class SpotifyAPI(BaseModel):
             stores the access token in api_token if successful."""
         auth_string = f"{self._client_id}:{self._client_secret}"
         auth_encoded = b64encode(auth_string.encode("ascii")).decode("ascii")
-        print(f'\nauth encoded: {str(auth_encoded)}\n')
 
         endpoint = "https://accounts.spotify.com/api/token"
         headers = {
@@ -175,7 +174,7 @@ class SpotifyAPI(BaseModel):
                 print(f"\nBad HTTP Code: {response.status_code}")
                 raise requests.exceptions.HTTPError
         except Exception as e:
-            print(f"\nAn error occured making the request: {e}\n")
+            print(f"\nAn error occured making the request to post an id: {e}\n")
             raise e
 
 # For now, we don't need anything from these objects except the name
@@ -244,28 +243,29 @@ class SpotifyTrack(BaseModel):
         # assert len(track_results) == len(feature_results)
 
         id_to_track = {track["id"]: track for track in track_results}
-        id_to_features = {features.id: features for features in features_results}
+        id_to_features = {features.id: features for features in features_results if features is not None}
         spotify_tracks = []
-        for id, track in id_to_track:
+        for id in id_to_track.keys():
             # get data from call to tracks endpoint
-            links = Link.from_df(matches["sid" == id])
+            track = id_to_track[id]
+            links = Link.from_df(matches[matches["sid"] == id])
             title = track["name"]
             year_first_released = int(track["album"]["release_date"][:3])
             duration_ms = track["duration_ms"]
             popularity = track["popularity"]
             album = Album(
-                id=track["album"]["id"],
-                name=track["album"]["name"]
+                album_id=track["album"]["id"],
+                title=track["album"]["name"]
             )
             artists = [
                 Artist(
-                    id=artist["id"],
-                    name=artist["name"]
+                    artist_id=artist["id"],
+                    title=artist["name"]
                 ) for artist in track["artists"]
             ]
 
             # feature data
-            if id_to_features["id"] is not None:
+            if id_to_features.get("id") is not None:
                 has_features = True
                 features = id_to_features["id"]
             else:
@@ -288,7 +288,6 @@ class SpotifyTrack(BaseModel):
             )
         return spotify_tracks
     
-
 
 
 

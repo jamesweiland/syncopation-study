@@ -1,6 +1,6 @@
 {{ config(
     materialized="create",
-    post_hook="create index idx_sid on {{ this.name }} (spotify_id)"
+    post_hook="create index idx_audio_feature on {{ this.name }} (spotify_id)"
   )
 }}
 
@@ -11,5 +11,5 @@ create table {{ this }} (
     energy real,
     valence real,
     speechiness real,
-    instrumentalness real,
+    instrumentalness real
 )

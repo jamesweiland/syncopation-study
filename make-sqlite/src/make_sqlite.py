@@ -1,12 +1,14 @@
+import multiprocessing
 import subprocess
 import sqlite3
 import argparse
 from typing import Any, Generator, Iterable
 import pandas as pd
+from pandas import DataFrame
 from pathlib import Path
 from tqdm import tqdm
 
-from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR_PATH, SQLITE_SAVE_PATH, TRACKS_FEATURES_PATH
+from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR_PATH, PROCS, SQLITE_SAVE_PATH, TRACKS_FEATURES_PATH
 from .models import SpotifyTrack, MIDI
 
 def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
@@ -17,7 +19,7 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
         table_name="spotify_tracks",
         cols=[
             "spotify_id", 
-            "name", 
+            "title", 
             "album_id", 
             "artist_ids", 
             "year_first_released", 
@@ -29,8 +31,8 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
             (
                 track.id,
                 track.title,
-                track.album.id,
-                ",".join([artist.id for artist in track.artists]),
+                track.album.album_id,
+                ",".join([artist.artist_id for artist in track.artists]),
                 track.year_first_released,
                 track.duration_ms,
                 track.popularity,
@@ -132,6 +134,13 @@ def insert_midi_file(db: sqlite3.Connection, file: MIDI):
         ]
     )
 
+    insert_many(
+        db=db,
+        table_name="midi_spotify_map",
+        cols=["md5", "spotify_id", "score"],
+        vals=[(link.md5, link.spotify_id, link.score) for link in file.links]
+    )
+
 def insert_many(
         db: sqlite3.Connection,
         table_name: str,
@@ -164,7 +173,7 @@ def insert_many(
 
 
 def chunker(seq: Iterable, size: int) -> Generator:
-    """Thx stackoverfow."""
+    """Thx stackoverfow"""
     return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
 def dbt(*args):
@@ -216,6 +225,13 @@ def parse_args() -> argparse.Namespace:
         help="Run only a single MIDI file. Useful for debugging/testing."
     )
 
+    parser.add_argument(
+        "--procs",
+        type=int,
+        help="The number of processes to use for multiprocessing",
+        default=PROCS
+    )
+
     args = parser.parse_args()
     return args
 
@@ -240,10 +256,11 @@ if __name__ == "__main__":
     unique_sids = matches["sid"].unique()
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
-    for chunk in tqdm(sid_chunks):
-        spotify_tracks = SpotifyTrack.from_ids(chunk, matches, audio_features)
+    print(len(sid_chunks))
+    for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
+        spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
         for track in spotify_tracks:
-            insert_spotify_track(db=db, spotify_track=track)
+            insert_spotify_track(db=db, track=track)
     
     unique_md5s = matches["md5"].unique()
     for md5 in tqdm(unique_md5s):
