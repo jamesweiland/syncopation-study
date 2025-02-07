@@ -1,6 +1,6 @@
 {{ config(
     materialized="create",
-    post_hook="create index idx_artist_id on {{ this.name }} (id)"
+    post_hook="create index idx_artist on {{ this.name }} (artist_id)"
     ) 
 }}
 

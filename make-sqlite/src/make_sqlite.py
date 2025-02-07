@@ -1,12 +1,14 @@
+import multiprocessing
 import subprocess
 import sqlite3
 import argparse
 from typing import Any, Generator, Iterable
 import pandas as pd
+from pandas import DataFrame
 from pathlib import Path
 from tqdm import tqdm
 
-from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR, SQLITE_SAVE_PATH
+from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR_PATH, PROCS, SQLITE_SAVE_PATH, TRACKS_FEATURES_PATH
 from .models import SpotifyTrack, MIDI
 
 def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
@@ -17,33 +19,53 @@ def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
         table_name="spotify_tracks",
         cols=[
             "spotify_id", 
-            "name", 
+            "title", 
             "album_id", 
             "artist_ids", 
             "year_first_released", 
             "duration_ms", 
-            "popularity", 
-            "danceability", 
-            "acousticness", 
-            "energy",
-            "valence"
+            "popularity",
+            "has_features",
             ],
         vals=[
             (
                 track.id,
                 track.title,
-                track.album.id,
-                ",".join([artist.id for artist in track.artists]),
+                track.album.album_id,
+                ",".join([artist.artist_id for artist in track.artists]),
                 track.year_first_released,
                 track.duration_ms,
                 track.popularity,
-                track.danceability,
-                track.acousticness,
-                track.energy,
-                track.valence,
+                track.has_features,
             )
         ]
     )
+
+    if track.has_features:
+        insert_many(
+            db,
+            table_name="audio_features",
+            cols=[
+                "spotify_id",
+                "danceability",
+                "acousticness",
+                "energy",
+                "valence",
+                "speechiness",
+                "instrumentalness",
+            ],
+            vals=[
+                (
+                    track.features.id,
+                    track.features.danceability,
+                    track.features.acousticness,
+                    track.features.energy,
+                    track.features.valence,
+                    track.features.speechiness,
+                    track.features.instrumentalness,
+                )
+            ]
+        )
 
     insert_many(
         db=db,
@@ -112,6 +134,13 @@ def insert_midi_file(db: sqlite3.Connection, file: MIDI):
         ]
     )
 
+    insert_many(
+        db=db,
+        table_name="midi_spotify_map",
+        cols=["md5", "spotify_id", "score"],
+        vals=[(link.md5, link.spotify_id, link.score) for link in file.links]
+    )
+
 def insert_many(
         db: sqlite3.Connection,
         table_name: str,
@@ -144,14 +173,13 @@ def insert_many(
 
 
 def chunker(seq: Iterable, size: int) -> Generator:
-    """Thx stackoverfow."""
+    """Thx stackoverfow"""
     return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
 def dbt(*args):
     """Wrapper function for executing dbt command line arguments"""
-    print(f'attempting dbt {args[0]}')
     return subprocess.call(
-        ["dbt", *args, f"--profiles-dir={DBT_PATH}", f"--project-dir={DBT_PATH}"]
+        ["dbt", *args, f"--project-dir={DBT_PATH}", f"--profiles-dir={DBT_PATH}"]
     )
 
 def parse_args() -> argparse.Namespace:
@@ -171,10 +199,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--features",
+        type=Path,
+        help="The path to the CSV file containing audio features from the deprecated Spotify API",
+        default=TRACKS_FEATURES_PATH
+    )
+
+    parser.add_argument(
         "--midis",
         type=Path,
         help="The path to the directory containing the MIDI files.",
-        default=MMD_MIDI_DIR
+        default=MMD_MIDI_DIR_PATH
     )
 
     parser.add_argument(
@@ -188,6 +223,13 @@ def parse_args() -> argparse.Namespace:
         "--single",
         type=Path,
         help="Run only a single MIDI file. Useful for debugging/testing."
+    )
+
+    parser.add_argument(
+        "--procs",
+        type=int,
+        help="The number of processes to use for multiprocessing",
+        default=PROCS
     )
 
     args = parser.parse_args()
@@ -205,22 +247,27 @@ if __name__ == "__main__":
         dbt("run")
 
     assert args.matches.exists(), "Must provide a valid path to the matches file."
+    assert args.features.exists(), "Must provide a valid path to the audio features file."
     db = sqlite3.connect(args.out, timeout=10000)
-    df = pd.read_csv(args.matches, sep="\t")
+    matches = pd.read_csv(args.matches, sep="\t")
+    audio_features = pd.read_csv(args.features)
 
-    unique_sids = df["sid"].unique()
+
+    unique_sids = matches["sid"].unique()
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
-    for chunk in tqdm(sid_chunks):
-        spotify_tracks = SpotifyTrack.from_ids(chunk, df)
+    print(len(sid_chunks))
+    for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
+        spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
         for track in spotify_tracks:
-            insert_spotify_track(db=db, spotify_track=track)
+            insert_spotify_track(db=db, track=track)
     
-    unique_md5s = df["md5"].unique()
+    unique_md5s = matches["md5"].unique()
     for md5 in tqdm(unique_md5s):
         assert args.midis.exists()
         path = args.midis.joinpath(Path(md5[0] + "/" + md5[1] + "/" + md5[2] + "/" + md5 + ".mid"))
         midi = MIDI.from_path(path)
+        insert_midi_file(db, midi)
 
     db.commit()
     db.close()

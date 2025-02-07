@@ -1,6 +1,6 @@
 {{ config(
     materialized="create",
-    post_hook="create index idx_sid on {{ this.name }} (spotify_id)"
+    post_hook="create index idx_spotify on {{ this.name }} (spotify_id)"
   )
 }}
 
@@ -12,8 +12,5 @@ create table {{ this }} (
     year_first_released integer not null,
     duration_ms integer not null,
     popularity integer,
-    danceability real,
-    acousticness real,
-    energy real,
-    valence real,
+    has_features boolean not null
 )
