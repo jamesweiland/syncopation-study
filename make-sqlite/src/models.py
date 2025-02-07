@@ -111,7 +111,12 @@ class SpotifyAPI(BaseModel):
                 response.raise_for_status()
                 return response.json()["tracks"]
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 or e.response.status_code == 503:
+                if e.response.status_code == 429:
+                    print(e.response.headers)
+                    wait_time = int(e.response.headers["retry-after"])
+                    print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...")
+                    time.sleep(wait_time)
+                elif e.response.status_code == 503:
                     print(f"\nTracks request failed with code {e.response.status_code}. Waiting then retrying...\n")
                     time.sleep(5.0)
                 elif e.response.status_code == 502:
@@ -184,7 +189,11 @@ class SpotifyAPI(BaseModel):
                 self._api_token = response.json()["access_token"]
                 return response.json()["access_token"]
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 or e.response.status_code == 503:
+                if e.response.status_code == 429:
+                    wait_time = int(e.response.headers["retry-after"])
+                    print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...\n")
+                    time.sleep(wait_time)
+                elif e.response.status_code == 503:
                     print(f"\nToken request failed with code {e.response.status_code}. Waiting then retrying...\n")
                     time.sleep(5.0)
                 else:
