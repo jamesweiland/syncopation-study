@@ -1,3 +1,4 @@
+import time
 from typing import Optional, Union
 import requests
 import os
@@ -8,6 +9,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from miditoolkit import MidiFile
 import re
+from time import sleep
 
 from synpy3 import WNBD
 from synpy3.syncopation import calculate_syncopation
@@ -88,7 +90,7 @@ class SpotifyAPI(BaseModel):
     _client_secret: str = PrivateAttr(default=os.environ["SPOTIFY_CLIENT_SECRET"])
     _api_token: str = PrivateAttr(default="")
 
-    def get_tracks(self, ids: list[str]) -> list[dict]:
+    def get_tracks(self, ids: list[str], max_retries = 5) -> list[dict]:
         """ Make a GET request to the Spotify API for a list of tracks and return
             the JSON-formatted response."""
         assert len(ids) <= 50, "Must request less than 50 tracks at a time."
@@ -96,25 +98,34 @@ class SpotifyAPI(BaseModel):
         if self._api_token == "":
             self._send_auth_request()
 
-        ids_comma_separated = ""
-        for id in ids:
-            ids_comma_separated += id + ","
-        ids_comma_separated = ids_comma_separated[:-1]
+        ids_comma_separated = ",".join(ids)
         
         endpoint = "https://api.spotify.com/v1/tracks?ids=" + ids_comma_separated
         header = {
             "Authorization": "Bearer " + self._api_token
         }
-        try:
-            response = requests.get(url=endpoint, headers=header)
-            if response.status_code == 200:
+
+        for i in range(max_retries):
+            try:
+                response = requests.get(url=endpoint, headers=header)
+                response.raise_for_status()
                 return response.json()["tracks"]
-            else:
-                print(f"Bad HTTP Code: {response.status_code}")
-                raise requests.exceptions.HTTPError
-        except Exception as e:
-            print(f"An error occurred when making the request to get tracks: {e}")
-            raise e
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 429 or e.response.status_code == 503:
+                    print(f"\nTracks request failed with code {e.response.status_code}. Waiting then retrying...\n")
+                    time.sleep(5.0)
+                elif e.response.status_code == 502:
+                    print(f"\nRequest failed with code 502 (bad gateway). Refreshing auth token and retrying...\n")
+                    self._send_auth_request()
+                else:
+                    print(f"\nAn error occured while trying to request tracks: {e}\n")
+                    raise e
+            except requests.exceptions.RequestException as e:
+                print(f"\nAn error occured while trying to request tracks: {e}\n")
+                raise e
+        else:
+            print("\nMax retries exceeded for tracks request\n")
+            raise RuntimeError
     
     """ Spotify deprecated their audio-features endpoint :(
         I will keep this function here on the off-chance that
@@ -152,9 +163,10 @@ class SpotifyAPI(BaseModel):
     #         print(f"An error occurred when making the request: {e}")
     #         raise e
         
-    def _send_auth_request(self):
+    def _send_auth_request(self, max_retries=5):
         """ Sends an authorization request for an access token to the Spotify API and
             stores the access token in api_token if successful."""
+        
         auth_string = f"{self._client_id}:{self._client_secret}"
         auth_encoded = b64encode(auth_string.encode("ascii")).decode("ascii")
 
@@ -164,18 +176,26 @@ class SpotifyAPI(BaseModel):
             "Content-Type": "application/x-www-form-urlencoded"
         }
         body = {"grant_type": "client_credentials"}
-        try:
-            response = requests.post(url=endpoint, headers=headers, data=body)
-            if response.status_code == 200:
-                result = response.json()
-                self._api_token = result["access_token"]
-                return result["access_token"]
-            else:
-                print(f"\nBad HTTP Code: {response.status_code}")
-                raise requests.exceptions.HTTPError
-        except Exception as e:
-            print(f"\nAn error occured making the request to post an id: {e}\n")
-            raise e
+
+        for i in range(max_retries):
+            try:
+                response = requests.post(url=endpoint, headers=headers, data=body)
+                response.raise_for_status()
+                self._api_token = response.json()["access_token"]
+                return response.json()["access_token"]
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 429 or e.response.status_code == 503:
+                    print(f"\nToken request failed with code {e.response.status_code}. Waiting then retrying...\n")
+                    time.sleep(5.0)
+                else:
+                    print(f"\nAn error occured making the request to post an id: {e}\n")
+                    raise e
+            except requests.exceptions.RequestException as e:
+                print(f"\nAn error occured while trying to request an auth token: {e}\n")
+                raise e
+        else:
+            print("\nMax retries exceeded for auth token request")
+            raise RuntimeError
 
 # For now, we don't need anything from these objects except the name
 # But this might be useful in the future
