@@ -8,7 +8,14 @@ from pandas import DataFrame, Series
 from pathlib import Path
 from tqdm import tqdm
 
-from ._utils import DBT_PATH, MMD_AUDIO_TEXT_MATCHES_PATH, MMD_MIDI_DIR_PATH, PROCS, SQLITE_SAVE_PATH, TRACKS_FEATURES_PATH
+from ._utils import (
+    DBT_PATH,
+    MMD_AUDIO_TEXT_MATCHES_PATH, 
+    MMD_MIDI_DIR_PATH, PROCS, 
+    SQLITE_SAVE_PATH, 
+    TRACKS_FEATURES_PATH,
+    save_progress
+)
 from .models import SpotifyTrack, MIDI
 
 def insert_spotify_track(db: sqlite3.Connection, track: SpotifyTrack):
@@ -305,9 +312,14 @@ if __name__ == "__main__":
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
     for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
-        spotify_tracks = SpotifyTrack.from_ids(list(sid_chunk), matches, audio_features)
-        for track in spotify_tracks:
-            insert_spotify_track(db=db, track=track)
+        try:
+            spotify_tracks = SpotifyTrack.from_ids(list(sid_chunk), matches, audio_features)
+            for track in spotify_tracks:
+                insert_spotify_track(db=db, track=track)
+        except KeyboardInterrupt:
+            save_progress(sid_chunk)
+            print("KeyboardInterrupt interrupted spotify track insertion process. Saving ids to logs/failed_track_ids.json...")
+            raise
     
     unique_md5s = matches["md5"].unique()
 

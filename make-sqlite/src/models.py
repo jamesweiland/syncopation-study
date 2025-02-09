@@ -10,10 +10,11 @@ from base64 import b64encode
 from dataclasses import dataclass
 from miditoolkit import MidiFile
 import re
-from time import sleep
+import time
 
 from synpy3 import WNBD
 from synpy3.syncopation import calculate_syncopation
+from._utils import save_progress
 
 
 class Link(BaseModel):
@@ -94,60 +95,61 @@ class SpotifyAPI(BaseModel):
     def get_tracks(self, ids: list[str], max_retries = 5) -> list[dict]:
         """ Make a GET request to the Spotify API for a list of tracks and return
             the JSON-formatted response."""
-        assert len(ids) <= 50, "Must request less than 50 tracks at a time."
+        try:
+            assert len(ids) <= 50, "Must request less than 50 tracks at a time."
 
-        if self._api_token == "":
-            try:
-                self._send_auth_request()
-            except e:
-                with open("./logs/failed_track_ids.json", "w") as file:
-                    json.dump(ids, file)
-                raise e
-
-        ids_comma_separated = ",".join(ids)
-        
-        endpoint = "https://api.spotify.com/v1/tracks?ids=" + ids_comma_separated
-        header = {
-            "Authorization": "Bearer " + self._api_token
-        }
-
-        for i in range(max_retries):
-            try:
-                response = requests.get(url=endpoint, headers=header)
-                response.raise_for_status()
-                return response.json()["tracks"]
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429:
-                    print(e.response.headers)
-                    wait_time = int(e.response.headers["retry-after"])
-                    print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...")
-                    time.sleep(wait_time)
-                elif e.response.status_code == 503:
-                    print(f"\nTracks request failed with code {e.response.status_code}. Waiting then retrying...\n")
-                    time.sleep(5.0)
-                elif e.response.status_code == 502:
-                    print(f"\nRequest failed with code 502 (bad gateway). Refreshing auth token and retrying...\n")
-                    try:
-                        self._send_auth_request()
-                    except e:
-                        with open("./logs/failed_track_ids.json", "w") as file:
-                            json.dump(ids, file)
-                else:
-                    print(f"\nAn error occured while trying to request tracks: {e}\n")
+            if self._api_token == "":
+                try:
+                    self._send_auth_request()
+                except e:
+                    save_progress(ids)
                     raise e
-            except requests.exceptions.ConnectionError as e:
-                print(f"\nA connection error occured while trying to request tracks, waiting 10 seconds then retrying: {e}\n")
-                time.sleep(10.0)
-            except requests.exceptions.RequestException as e:
-                print(f"\nAn error occured while trying to request tracks, waiting 5 seconds then retrying: {e}\n")
-                time.sleep(5.0)
-            except RuntimeError:
-                time.sleep(0.001)
-        else:
-            with open("./logs/failed_track_ids.json", "w") as file:
-                json.dump(ids, file)
-            print("\nMax retries exceeded for tracks request. Failed ids saved to logs/failed_track_ids.json.\n")
-            raise RuntimeError
+
+            ids_comma_separated = ",".join(ids)
+            
+            endpoint = "https://api.spotify.com/v1/tracks?ids=" + ids_comma_separated
+            header = {
+                "Authorization": "Bearer " + self._api_token
+            }
+
+            for i in range(max_retries):
+                try:
+                    response = requests.get(url=endpoint, headers=header)
+                    response.raise_for_status()
+                    return response.json()["tracks"]
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 429:
+                        wait_time = int(e.response.headers["retry-after"])
+                        print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...")
+                        time.sleep(wait_time)
+                    elif e.response.status_code == 503:
+                        print(f"\nTracks request failed with code {e.response.status_code}. Waiting then retrying...\n")
+                        time.sleep(5.0)
+                    elif e.response.status_code == 502:
+                        print(f"\nRequest failed with code 502 (bad gateway). Refreshing auth token and retrying...\n")
+                        try:
+                            self._send_auth_request()
+                        except e:
+                            save_progress(ids)
+                            raise e
+                    else:
+                        print(f"\nAn error occured while trying to request tracks: {e}\n")
+                        save_progress(ids)
+                        raise e
+                except requests.exceptions.ConnectionError as e:
+                    print(f"\nA connection error occured while trying to request tracks, waiting 10 seconds then retrying: {e}\n")
+                    time.sleep(10.0)
+                except requests.exceptions.RequestException as e:
+                    print(f"\nAn error occured while trying to request tracks, waiting 5 seconds then retrying: {e}\n")
+                    time.sleep(5.0)
+            else:
+                save_progress(ids)
+                print("\nMax retries exceeded for tracks request. Failed ids saved to logs/failed_track_ids.json.\n")
+                raise RuntimeError
+        except KeyboardInterrupt:
+            print("Process intererupted by user. Saving progress to logs/failed_tracks.json...")
+            save_progress(ids)
+            raise
     
     """ Spotify deprecated their audio-features endpoint :(
         I will keep this function here on the off-chance that
@@ -225,6 +227,9 @@ class SpotifyAPI(BaseModel):
         else:
             print("\nMax retries exceeded for auth token request")
             raise RuntimeError
+    
+
+
 
 # For now, we don't need anything from these objects except the name
 # But this might be useful in the future
