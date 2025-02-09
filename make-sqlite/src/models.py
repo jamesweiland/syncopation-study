@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Optional, Union
 import requests
@@ -96,7 +97,12 @@ class SpotifyAPI(BaseModel):
         assert len(ids) <= 50, "Must request less than 50 tracks at a time."
 
         if self._api_token == "":
-            self._send_auth_request()
+            try:
+                self._send_auth_request()
+            except e:
+                with open("./logs/failed_track_ids.json", "w") as file:
+                    json.dump(ids, file)
+                raise e
 
         ids_comma_separated = ",".join(ids)
         
@@ -111,20 +117,36 @@ class SpotifyAPI(BaseModel):
                 response.raise_for_status()
                 return response.json()["tracks"]
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 or e.response.status_code == 503:
+                if e.response.status_code == 429:
+                    print(e.response.headers)
+                    wait_time = int(e.response.headers["retry-after"])
+                    print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...")
+                    time.sleep(wait_time)
+                elif e.response.status_code == 503:
                     print(f"\nTracks request failed with code {e.response.status_code}. Waiting then retrying...\n")
                     time.sleep(5.0)
                 elif e.response.status_code == 502:
                     print(f"\nRequest failed with code 502 (bad gateway). Refreshing auth token and retrying...\n")
-                    self._send_auth_request()
+                    try:
+                        self._send_auth_request()
+                    except e:
+                        with open("./logs/failed_track_ids.json", "w") as file:
+                            json.dump(ids, file)
                 else:
                     print(f"\nAn error occured while trying to request tracks: {e}\n")
                     raise e
+            except requests.exceptions.ConnectionError as e:
+                print(f"\nA connection error occured while trying to request tracks, waiting 10 seconds then retrying: {e}\n")
+                time.sleep(10.0)
             except requests.exceptions.RequestException as e:
-                print(f"\nAn error occured while trying to request tracks: {e}\n")
-                raise e
+                print(f"\nAn error occured while trying to request tracks, waiting 5 seconds then retrying: {e}\n")
+                time.sleep(5.0)
+            except RuntimeError:
+                time.sleep(0.001)
         else:
-            print("\nMax retries exceeded for tracks request\n")
+            with open("./logs/failed_track_ids.json", "w") as file:
+                json.dump(ids, file)
+            print("\nMax retries exceeded for tracks request. Failed ids saved to logs/failed_track_ids.json.\n")
             raise RuntimeError
     
     """ Spotify deprecated their audio-features endpoint :(
@@ -184,15 +206,22 @@ class SpotifyAPI(BaseModel):
                 self._api_token = response.json()["access_token"]
                 return response.json()["access_token"]
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 or e.response.status_code == 503:
+                if e.response.status_code == 429:
+                    wait_time = int(e.response.headers["retry-after"])
+                    print(f"\nRate limit exceeded. Waiting {wait_time} seconds then retrying...\n")
+                    time.sleep(wait_time)
+                elif e.response.status_code == 503:
                     print(f"\nToken request failed with code {e.response.status_code}. Waiting then retrying...\n")
                     time.sleep(5.0)
                 else:
                     print(f"\nAn error occured making the request to post an id: {e}\n")
                     raise e
+            except requests.exceptions.ConnectionError as e:
+                print(f"\nA connection error occured while trying to request an auth token, waiting 10 seconds then retrying: {e}\n")
+                time.sleep(10.0)
             except requests.exceptions.RequestException as e:
-                print(f"\nAn error occured while trying to request an auth token: {e}\n")
-                raise e
+                print(f"\nAn error occured while trying to request an auth token, waiting 5 seconds then retrying: {e}\n")
+                time.sleep(5.0)
         else:
             print("\nMax retries exceeded for auth token request")
             raise RuntimeError

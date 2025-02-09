@@ -1,10 +1,10 @@
-import multiprocessing
+import json
 import subprocess
 import sqlite3
 import argparse
 from typing import Any, Generator, Iterable
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 from pathlib import Path
 from tqdm import tqdm
 
@@ -171,6 +171,40 @@ def insert_many(
         else:
             raise
 
+def is_one_in_table(db: sqlite3.Connection, table: str, id: str) -> bool:
+    """Checks whether an sid/md5 is already in db. table must be either spotify_tracks or midi_files."""
+    assert table in ("spotify_tracks", "midi_files")
+    key = "spotify_id" if table == "spotify_tracks" else "md5"
+    cursor = db.cursor()
+    cursor.execute(
+        "select exists("
+            f"select 1 from {table} where {key} = ?"
+        ")",
+        (id,)
+    )
+    return cursor.fetchone()[0] == 1
+
+def are_many_in_table(db: sqlite3.Connection, ids: list[str]) -> bool:
+    """ Checks whether the batch of ID's are in the spotify_tracks table.
+        This can only be used for spotify_tracks as MIDI files aren't done
+        in batches."""
+    ids_parameterized = ",".join(["?" for _ in ids])
+    cursor = db.cursor()
+    cursor.execute(f"""
+        select count(distinct spotify_id) 
+        from spotify_tracks 
+        where spotify_id in ({ids_parameterized})
+    """, ids)
+    return cursor.fetchone()[0] == len(ids)
+    # ids_parameterized = ",".join(["?" for id in ids])
+    # cursor = db.cursor()
+    # cursor.execute(
+    #     "select exists("
+    #         f"select spotify_id from spotify_tracks where spotify_id in ({ids_parameterized})"
+    #     ")",
+    #     (ids,),
+    # )
+    # return len(cursor.fetchall()) == len(ids)
 
 def chunker(seq: Iterable, size: int) -> Generator:
     """Thx stackoverfow"""
@@ -220,6 +254,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Option to append the existing database with new tracks only."
+    )
+
+    parser.add_argument(
         "--single",
         type=Path,
         help="Run only a single MIDI file. Useful for debugging/testing."
@@ -242,29 +282,36 @@ if __name__ == "__main__":
     # then, get a list of unique md5s in the df
     args = parse_args()
 
-    if not args.no_dbt:
+    if args.append:
+        assert args.out.exists()
+
+    if not args.no_dbt and not args.append:
         dbt("clean")
         dbt("run")
 
     assert args.matches.exists(), "Must provide a valid path to the matches file."
     assert args.features.exists(), "Must provide a valid path to the audio features file."
+    assert args.midis.exists(), "Must provide a valid path to the MIDI file directory."
+
     db = sqlite3.connect(args.out, timeout=10000)
     matches = pd.read_csv(args.matches, sep="\t")
     audio_features = pd.read_csv(args.features)
 
-
-    unique_sids = matches["sid"].unique()
+    unique_sids = Series(matches["sid"].unique())
+    if args.append:
+        with open("./logs/failed_track_ids.json", 'r') as file:
+            last_ids = json.load(file)
+            unique_sids = unique_sids.iloc[unique_sids[unique_sids == last_ids[0]].index[0]:unique_sids.size]
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
-    print(len(sid_chunks))
     for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
-        spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
+        spotify_tracks = SpotifyTrack.from_ids(list(sid_chunk), matches, audio_features)
         for track in spotify_tracks:
             insert_spotify_track(db=db, track=track)
     
     unique_md5s = matches["md5"].unique()
+
     for md5 in tqdm(unique_md5s):
-        assert args.midis.exists()
         path = args.midis.joinpath(Path(md5[0] + "/" + md5[1] + "/" + md5[2] + "/" + md5 + ".mid"))
         midi = MIDI.from_path(path)
         insert_midi_file(db, midi)
