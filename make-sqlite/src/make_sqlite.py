@@ -317,7 +317,7 @@ if __name__ == "__main__":
             for track in spotify_tracks:
                 insert_spotify_track(db=db, track=track)
         except KeyboardInterrupt:
-            save_progress(sid_chunk)
+            save_progress(list(sid_chunk))
             print("KeyboardInterrupt interrupted spotify track insertion process. Saving ids to logs/failed_track_ids.json...")
             raise
     
