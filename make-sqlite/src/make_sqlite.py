@@ -1,10 +1,10 @@
-import multiprocessing
+import json
 import subprocess
 import sqlite3
 import argparse
 from typing import Any, Generator, Iterable
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 from pathlib import Path
 from tqdm import tqdm
 
@@ -297,22 +297,21 @@ if __name__ == "__main__":
     matches = pd.read_csv(args.matches, sep="\t")
     audio_features = pd.read_csv(args.features)
 
-    unique_sids = matches["sid"].unique()
+    unique_sids = Series(matches["sid"].unique())
+    if args.append:
+        with open("./logs/failed_track_ids.json", 'r') as file:
+            last_ids = json.load(file)
+            unique_sids = unique_sids.iloc[unique_sids[unique_sids == last_ids[0]].index[0]:unique_sids.size]
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
     for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
-        if args.append and are_many_in_table(db, sid_chunk):
-            continue
-        spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
+        spotify_tracks = SpotifyTrack.from_ids(list(sid_chunk), matches, audio_features)
         for track in spotify_tracks:
-            if args.append and is_one_in_table(db, "spotify_tracks", track.id):
-                continue
             insert_spotify_track(db=db, track=track)
     
     unique_md5s = matches["md5"].unique()
+
     for md5 in tqdm(unique_md5s):
-        if is_one_in_table(db, "midi_files", md5):
-            continue
         path = args.midis.joinpath(Path(md5[0] + "/" + md5[1] + "/" + md5[2] + "/" + md5 + ".mid"))
         midi = MIDI.from_path(path)
         insert_midi_file(db, midi)

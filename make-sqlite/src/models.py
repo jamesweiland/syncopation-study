@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Optional, Union
 import requests
@@ -96,7 +97,12 @@ class SpotifyAPI(BaseModel):
         assert len(ids) <= 50, "Must request less than 50 tracks at a time."
 
         if self._api_token == "":
-            self._send_auth_request()
+            try:
+                self._send_auth_request()
+            except e:
+                with open("./logs/failed_track_ids.json", "w") as file:
+                    json.dump(ids, file)
+                raise e
 
         ids_comma_separated = ",".join(ids)
         
@@ -121,7 +127,11 @@ class SpotifyAPI(BaseModel):
                     time.sleep(5.0)
                 elif e.response.status_code == 502:
                     print(f"\nRequest failed with code 502 (bad gateway). Refreshing auth token and retrying...\n")
-                    self._send_auth_request()
+                    try:
+                        self._send_auth_request()
+                    except e:
+                        with open("./logs/failed_track_ids.json", "w") as file:
+                            json.dump(ids, file)
                 else:
                     print(f"\nAn error occured while trying to request tracks: {e}\n")
                     raise e
@@ -131,8 +141,12 @@ class SpotifyAPI(BaseModel):
             except requests.exceptions.RequestException as e:
                 print(f"\nAn error occured while trying to request tracks, waiting 5 seconds then retrying: {e}\n")
                 time.sleep(5.0)
+            except RuntimeError:
+                time.sleep(0.001)
         else:
-            print("\nMax retries exceeded for tracks request\n")
+            with open("./logs/failed_track_ids.json", "w") as file:
+                json.dump(ids, file)
+            print("\nMax retries exceeded for tracks request. Failed ids saved to logs/failed_track_ids.json.\n")
             raise RuntimeError
     
     """ Spotify deprecated their audio-features endpoint :(
