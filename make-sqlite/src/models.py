@@ -125,9 +125,12 @@ class SpotifyAPI(BaseModel):
                 else:
                     print(f"\nAn error occured while trying to request tracks: {e}\n")
                     raise e
+            except requests.exceptions.ConnectionError as e:
+                print(f"\nA connection error occured while trying to request tracks, waiting 10 seconds then retrying: {e}\n")
+                time.sleep(10.0)
             except requests.exceptions.RequestException as e:
-                print(f"\nAn error occured while trying to request tracks: {e}\n")
-                raise e
+                print(f"\nAn error occured while trying to request tracks, waiting 5 seconds then retrying: {e}\n")
+                time.sleep(5.0)
         else:
             print("\nMax retries exceeded for tracks request\n")
             raise RuntimeError
@@ -199,9 +202,12 @@ class SpotifyAPI(BaseModel):
                 else:
                     print(f"\nAn error occured making the request to post an id: {e}\n")
                     raise e
+            except requests.exceptions.ConnectionError as e:
+                print(f"\nA connection error occured while trying to request an auth token, waiting 10 seconds then retrying: {e}\n")
+                time.sleep(10.0)
             except requests.exceptions.RequestException as e:
-                print(f"\nAn error occured while trying to request an auth token: {e}\n")
-                raise e
+                print(f"\nAn error occured while trying to request an auth token, waiting 5 seconds then retrying: {e}\n")
+                time.sleep(5.0)
         else:
             print("\nMax retries exceeded for auth token request")
             raise RuntimeError

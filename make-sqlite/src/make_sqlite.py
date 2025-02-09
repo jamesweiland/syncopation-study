@@ -171,31 +171,40 @@ def insert_many(
         else:
             raise
 
-def is_in_table(db: sqlite3.Connection, table: str, id: str) -> bool:
+def is_one_in_table(db: sqlite3.Connection, table: str, id: str) -> bool:
     """Checks whether an sid/md5 is already in db. table must be either spotify_tracks or midi_files."""
     assert table in ("spotify_tracks", "midi_files")
+    key = "spotify_id" if table == "spotify_tracks" else "md5"
     cursor = db.cursor()
     cursor.execute(
         "select exists("
-            f"select 1 from {table} where id = ?"
+            f"select 1 from {table} where {key} = ?"
         ")",
-        (id)
+        (id,)
     )
     return cursor.fetchone()[0] == 1
 
-def is_in_table(db: sqlite3.Connection, ids: list[str]) -> bool:
+def are_many_in_table(db: sqlite3.Connection, ids: list[str]) -> bool:
     """ Checks whether the batch of ID's are in the spotify_tracks table.
         This can only be used for spotify_tracks as MIDI files aren't done
         in batches."""
-    ids_parameterized = ",".join(["?" for id in ids])
+    ids_parameterized = ",".join(["?" for _ in ids])
     cursor = db.cursor()
-    cursor.execute(
-        "select exists("
-            f"select id from spotify_tracks where id in ({ids_parameterized})"
-        ")",
-        (ids)
-    )
-    return len(cursor.fetchall()) == len(ids)
+    cursor.execute(f"""
+        select count(distinct spotify_id) 
+        from spotify_tracks 
+        where spotify_id in ({ids_parameterized})
+    """, ids)
+    return cursor.fetchone()[0] == len(ids)
+    # ids_parameterized = ",".join(["?" for id in ids])
+    # cursor = db.cursor()
+    # cursor.execute(
+    #     "select exists("
+    #         f"select spotify_id from spotify_tracks where spotify_id in ({ids_parameterized})"
+    #     ")",
+    #     (ids,),
+    # )
+    # return len(cursor.fetchall()) == len(ids)
 
 def chunker(seq: Iterable, size: int) -> Generator:
     """Thx stackoverfow"""
@@ -292,17 +301,17 @@ if __name__ == "__main__":
     sid_chunks = list(chunker(unique_sids, min(50, len(unique_sids))))
     midis = []
     for sid_chunk in tqdm(sid_chunks, total=len(sid_chunks)):
-        if args.append and is_in_table(db, sid_chunk):
+        if args.append and are_many_in_table(db, sid_chunk):
             continue
         spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
         for track in spotify_tracks:
-            if args.append and is_in_table(db, "spotify_tracks", track.id):
+            if args.append and is_one_in_table(db, "spotify_tracks", track.id):
                 continue
             insert_spotify_track(db=db, track=track)
     
     unique_md5s = matches["md5"].unique()
     for md5 in tqdm(unique_md5s):
-        if is_in_table(db, "midi_files", md5):
+        if is_one_in_table(db, "midi_files", md5):
             continue
         path = args.midis.joinpath(Path(md5[0] + "/" + md5[1] + "/" + md5[2] + "/" + md5 + ".mid"))
         midi = MIDI.from_path(path)
