@@ -296,7 +296,8 @@ if __name__ == "__main__":
             continue
         spotify_tracks = SpotifyTrack.from_ids(sid_chunk, matches, audio_features)
         for track in spotify_tracks:
-            if args.append and is_in_table(db, "spotify_tracks", track.id)
+            if args.append and is_in_table(db, "spotify_tracks", track.id):
+                continue
             insert_spotify_track(db=db, track=track)
     
     unique_md5s = matches["md5"].unique()
